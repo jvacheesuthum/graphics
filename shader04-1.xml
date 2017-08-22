@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<pipeline>
+<vertex>
+<![CDATA[#version 400 
+
+uniform mat4 mvMatrix;
+uniform mat4 pMatrix;
+uniform mat3 normalMatrix; //mv matrix without translation
+
+uniform vec4 lightPosition_camSpace; //light Position in camera space
+
+uniform vec4 ambient;
+uniform vec4 diffuse;
+uniform vec4 specular;
+uniform float shininess;
+uniform float ambientCoefficent;
+uniform float diffuseCoefficent;
+uniform float specularCoefficent;
+
+in vec4 vertex_worldSpace;
+in vec3 normal_worldSpace;
+in vec2 textureCoordinate_input;
+
+out data
+{
+  vec4 position_camSpace;
+  vec3 normal_camSpace;
+  vec2 textureCoordinate;
+  vec4 color;
+}vertexInOut;
+
+//Vertex shader compute the vectors per vertex
+void main(void)
+{
+  //Put the vertex in the correct coordinate system by applying the model view matrix
+  vec4 vertex_camSpace = mvMatrix*vertex_worldSpace; 
+  vertexInOut.position_camSpace = vertex_camSpace;
+  
+  //Apply the model-view transformation to the normal (only rotation, no translation)
+  //Normals put in the camera space
+  vertexInOut.normal_camSpace = normalize(normalMatrix*normal_worldSpace);
+  
+  //Color chosen as red
+  vertexInOut.color = vec4(1.0, 0.0, 0.0, 1.0);
+  
+  //Texture coordinate
+  vertexInOut.textureCoordinate = textureCoordinate_input;
+  
+  gl_Position = pMatrix * vertex_camSpace;
+}
+
+
+]]></vertex>
+<geom>
+<![CDATA[#version 400 
+
+layout(triangles) in;
+layout(triangle_strip, max_vertices = 100) out;
+
+uniform mat4 mvMatrix;
+uniform mat4 pMatrix;
+uniform mat3 normalMatrix; //mv matrix without translation
+
+uniform vec4 lightPosition_camSpace; //light Position in camera space
+
+uniform int time;
+uniform int level;
+
+vec4 vectors[3];
+
+in data
+{
+  vec4 position_camSpace;
+  vec3 normal_camSpace;
+  vec2 textureCoordinate;
+  vec4 color;
+}vertexIn[3];
+
+out fragmentData
+{
+  vec4 position_camSpace;
+  vec3 normal_camSpace;
+  vec2 textureCoordinate;
+  vec4 color;
+} frag;
+
+void main() {
+
+  vec4 pos[3];
+  vec3 normals[3];
+  for (int i = 0; i < 3; i++) { // You used triangles, so it's always 3
+    gl_Position = gl_in[i].gl_Position;
+    frag.position_camSpace = vertexIn[i].position_camSpace;
+    frag.normal_camSpace = vertexIn[i].normal_camSpace;
+    frag.textureCoordinate = vertexIn[i].textureCoordinate;
+    frag.color = vertexIn[i].color;
+  
+    pos[i] = gl_Position;
+    normals[i] = vertexIn[i].normal_camSpace;
+	EmitVertex();
+  }
+  EndPrimitive();
+  
+  for (int i = 0; i < level; i++) {
+    for (int j = 0; j < pow(3,i); j++) {
+
+	  //decide coordinates by offset 1/2^level
+      gl_Position = pow(0.5,i+1)*pos[j%3] + (1-pow(0.5,i+1))*pos[(j+2)%3];
+	  EmitVertex();
+
+      gl_Position = pow(0.5,i+1)*pos[(j+1)%3] + (1-pow(0.5,i+1))*pos[(j+2)%3];
+	  EmitVertex();
+
+      gl_Position = pow(0.5,i+1)*pos[j%3] + pow(0.5,i+1)*pos[(j+1)%3] + (1-pow(0.5,i))*pos[(j+2)%3];
+	  EmitVertex();
+
+  	  EndPrimitive();
+
+	  //average out normal from parent vertrices
+	  frag.normal_camSpace = (normals[0]+normals[1]+normals[2])/3;
+    }
+  }
+ }
+
+
+
+
+]]></geom>
+<frag>
+<![CDATA[#version 400
+
+uniform vec4 ambient;
+uniform vec4 diffuse;
+uniform vec4 specular;
+uniform float shininess;
+uniform float ambientCoefficent;
+uniform float diffuseCoefficent;
+uniform float specularCoefficent;
+
+uniform vec4 lightPosition_camSpace; //light Position in camera space
+
+in fragmentData
+{
+  vec4 position_camSpace;
+  vec3 normal_camSpace;
+  vec2 textureCoordinate;
+  vec4 color;
+} frag;
+
+out vec4 fragColor; 
+
+//Fragment shader computes the final color
+void main(void)
+{
+  fragColor =  frag.color;
+}
+
+
+]]></frag>
+<R2TVert>
+<![CDATA[#version 400
+
+uniform mat4 mvMatrix;
+uniform mat4 pMatrix;
+
+in vec4 vertex_worldSpace;
+in vec2 textureCoordinate_input;
+
+out vec2 varyingTextureCoordinate;
+
+//Vertex shader compute the vectors per vertex
+void main(void)
+{
+  //Put the vertex in the correct coordinate system by applying the model view matrix
+  vec4 vertex_camSpace = mvMatrix*vertex_worldSpace;
+
+  varyingTextureCoordinate = textureCoordinate_input;
+  gl_Position = pMatrix * vertex_camSpace;
+}
+
+
+]]></R2TVert>
+<R2TFrag>
+<![CDATA[#version 400
+
+uniform sampler2D textureRendered;
+
+in vec2 varyingTextureCoordinate;
+
+out vec4 fragColor;
+
+void main(void)
+{
+  //Render the texture on a quad
+  fragColor = texture2D(textureRendered, varyingTextureCoordinate.st);
+}
+
+
+]]></R2TFrag>
+</pipeline>
